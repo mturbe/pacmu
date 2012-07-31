@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# Fetches mirrorlist from archlinux.org/mirrors based on supplied options:
+#		[-c COUNTRY]
+#			Fetch mirrors from specific country.
+#			If option is omitted, all countries will be used.
+#		[-f]
+#			Fetch FTP mirrors.
+#		[-s]
+#			Fetch HTTP mirrors.
+#		[-4]
+#			Fetch ipv4 mirrors.
+#		[-6]
+#			Fetch ipv6 mirrors.
+#		[-m]
+#			Fetch mirrors based on mirror status.
+#		[-n MIRRORS]
+#			MIRRORS is the number of mirrors to be placed in the generated mirrorlist.
+#			If option is omitted, or a number is not supplied, number of mirrors will default to 5.
+#		[-r]
+#			Replace /etc/pacman.d/mirrorlist with the generated mirrorlist.
+#			Move /etc/pacman.d/mirrorlist to /etc/pacman.d/mirrorlist.old
+#		[-h]
+#			Display usage.
+#
+
+# Parse options.
+while getopts "c:fs46mn:rh" option; do
+	case "$option" in
+		c) country="$OPTARG" ;;
+		f) use_ftp=true ;;
+		s) use_http=true ;;
+		4) use_ipv4=true ;;
+		6) use_ipv6=true ;;
+		m) use_mirror_status=true ;;
+		n) number_mirrors="$OPTARG" ;;
+		r) replace=true ;;
+		h|*) printf "pacmu\nusage: [-c COUNTRY] [-f] [-s] [-4] [-6] [-m] [-n MIRRORS] [-r] [-h]\n"; exit 1 ;;
+	esac
+done 2> /dev/null
+
+# Build address for request.
+address="www.archlinux.org/mirrorlist/?"
+# Verify that country is two letters between A and Z.
+! [[ "$country" =~ ^[A-Z]{2}$ ]] && country="country=all" || country="country=$country"
+[ -n "$use_ftp" ] && protocol="&protocol=ftp"
+[ -n "$use_http" ] && protocol="$protocol&protocol=http"
+[ -n "$use_ipv4" ] && ipv="&ip_version=4"
+[ -n "$use_ipv6" ] && ipv="$ipv&ip_version=6"
+[ -n "$use_mirror_status" ] && mirror_status="&use_mirror_status=on"
+address="$address$country$protocol$ipv$mirror_status"
+
+# Verify that number_mirrors is actually a number.
+! [[ "$number_mirrors" =~ ^[0-9]+$ ]] && number_mirrors="5"
+
+# Build filename of format YY_MM_DD_mirrorlist.
+file="$(date "+%D" | sed 's/\//_/g')_mirrorlist"
+
+# Fetch mirrorlist and perform clean up.
+wget -qO- "$address" | sed '/^##/d;/^$/d;s/^#//g' | head -"$number_mirrors" > $file
+
+# Replace mirrorlist.
+if [ -n "$replace" ]; then
+	# If root priviledges do not exist, try to use sudo.
+	# There's probably a better way to do this, just not seeing it right now.
+	if [ "$UID" -ne "0" ]; then
+		sudo mv /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.old
+		sudo mv $file /etc/pacman.d/mirrorlist
+		sudo chmod 644 /etc/pacman.d/mirrorlist
+	else
+		mv /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.old
+		mv $file /etc/pacman.d/mirrorlist
+		chmod 644 /etc/pacman.d/mirrorlist
+	fi
+fi
+
+# Display the new mirrorlist.
+cat /etc/pacman.d/mirrorlist | more
+
