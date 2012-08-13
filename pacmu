@@ -75,5 +75,5 @@ if [ -n "$replace" ]; then
 fi
 
 # Display the new mirrorlist.
-cat /etc/pacman.d/mirrorlist | more
+more /etc/pacman.d/mirrorlist
 
